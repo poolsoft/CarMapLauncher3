@@ -1,0 +1,86 @@
+name: Build GraphHopper Turkey Data
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"   # her ayın 1'inde çalışır
+  workflow_dispatch:       # manuel başlatma
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip default-jre default-jdk maven \
+            osmium-tool gdal-bin sqlite3
+
+      - name: Download OSM Turkey extract
+        run: |
+          wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
+
+      - name: Download GraphHopper Web JAR
+        run: |
+          wget -O graphhopper-web-7.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/7.0/graphhopper-web-7.0.jar
+
+      - name: Prepare config.yml
+        run: |
+          cat > config.yml <<EOL
+          graphhopper:
+            datareader.file: turkey.osm.pbf
+            graph.location: turkey-gh
+            datareader.dataaccess: MMAP
+            import.osm.ignored_highways: footway,cycleway,path,pedestrian,steps,track,bridleway,service
+            graph.encoded_values: [average_speed, maxspeed, road_class, priority, surface]
+
+            profiles:
+              - name: car
+                vehicle: car
+                weighting: fastest
+                turn_costs: true
+              - name: car_shortest
+                vehicle: car
+                weighting: shortest
+                turn_costs: true
+
+            profiles_ch:
+              - profile: car
+              - profile: car_shortest
+
+            prepare.ch.threads: 1
+            prepare.min_network_size: 200
+          EOL
+
+      - name: Run GraphHopper import
+        run: |
+          java -Xmx6g -jar graphhopper-web-7.0.jar import config.yml
+
+      - name: Zip graphhopper data (.ghz)
+        run: |
+          zip -r turkey.ghz turkey-gh
+
+      - name: Extract POIs + addresses with Osmium
+        run: |
+          osmium tags-filter turkey.osm.pbf \
+            nwr/amenity nwr/shop nwr/tourism nwr/leisure nwr/highway nwr/addr:* \
+            -o poi.osm.pbf
+
+      - name: Convert POIs to SQLite
+        run: |
+          ogr2ogr -f SQLite pois.sqlite poi.osm.pbf -dsco SPATIALITE=YES
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: monthly-build
+          name: "Monthly Turkey Data"
+          body: "GraphHopper graph (.ghz) + POI DB (SQLite) for Turkey"
+          files: |
+            turkey.ghz
+            pois.sqlite
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
