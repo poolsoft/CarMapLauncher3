@@ -1,9 +1,9 @@
-name: Build GraphHopper Turkey.ghz
+name: Build GraphHopper Turkey Data
 
 on:
   schedule:
-    - cron: "0 0 1 * *"   # Her ayın 1'inde çalışır
-  workflow_dispatch:       # Manuel başlatma
+    - cron: "0 0 1 * *"   # her ayın 1'inde çalışır
+  workflow_dispatch:       # manuel başlatma
 
 jobs:
   build:
@@ -23,15 +23,11 @@ jobs:
         run: |
           wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
 
-      - name: Download Mapsforge map
-        run: |
-          wget -O turkey.map https://download.mapsforge.org/maps/v5/europe/turkey.map
-
       - name: Download GraphHopper Web JAR
         run: |
           wget -O graphhopper-web-7.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/7.0/graphhopper-web-7.0.jar
 
-      - name: Prepare GraphHopper config.yml
+      - name: Prepare config.yml
         run: |
           cat > config.yml <<EOL
           graphhopper:
@@ -62,10 +58,10 @@ jobs:
       - name: Run GraphHopper import
         run: |
           java -Xmx6g -jar graphhopper-web-7.0.jar import config.yml
+          cp config.yml turkey-gh/   # config.yml GHZ içine kopyala
 
-      - name: Zip GraphHopper + Mapsforge map into .ghz
+      - name: Zip graphhopper data (.ghz)
         run: |
-          cp turkey.map turkey-gh/   # Mapsforge map GHZ içine kopyala
           zip -r turkey.ghz turkey-gh
 
       - name: Extract POIs + addresses with Osmium
@@ -83,7 +79,7 @@ jobs:
         with:
           tag_name: monthly-build
           name: "Monthly Turkey Data"
-          body: "GraphHopper graph (.ghz) including Mapsforge map + POI DB (SQLite) for Turkey"
+          body: "GraphHopper graph (.ghz) + POI DB (SQLite) for Turkey"
           files: |
             turkey.ghz
             pois.sqlite
