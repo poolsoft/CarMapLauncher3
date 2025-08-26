@@ -1,4 +1,4 @@
-name: Build GraphHopper9 Turkey Data
+name: Build GraphHopper8 Turkey Data
 
 on:
   schedule:
