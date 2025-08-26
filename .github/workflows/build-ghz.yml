@@ -1,4 +1,4 @@
-name: Build GraphHopper7+8 Turkey Data
+name: Build GraphHopper 7+8 Turkey Data
 
 on:
   schedule:
@@ -19,16 +19,22 @@ jobs:
           sudo apt-get install -y wget unzip default-jre default-jdk maven \
             osmium-tool gdal-bin sqlite3 zip
 
+      # =====================
+      #  Download Data + Tools
+      # =====================
       - name: Download OSM Turkey extract
         run: |
           wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
 
-      # --- GraphHopper 7 ---
-      - name: Download GraphHopper Web JAR (7.0)
+      - name: Download GraphHopper 7 + 8
         run: |
           wget -O graphhopper-web-7.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/7.0/graphhopper-web-7.0.jar
+          wget -O graphhopper-web-8.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/8.0/graphhopper-web-8.0.jar
 
-      - name: Prepare config.yml for GH7
+      # =====================
+      #  Config GH7
+      # =====================
+      - name: Prepare config-gh7.yml
         run: |
           cat > config-gh7.yml <<EOL
           graphhopper:
@@ -56,18 +62,10 @@ jobs:
             prepare.min_network_size: 200
           EOL
 
-      - name: Run GraphHopper 7 import
-        run: |
-          java -Xmx6g -jar graphhopper-web-7.0.jar import config-gh7.yml
-          cp config-gh7.yml turkey-gh7/
-          zip -r turkey-gh7.ghz turkey-gh7
-
-      # --- GraphHopper 8 ---
-      - name: Download GraphHopper Web JAR (8.0)
-        run: |
-          wget -O graphhopper-web-8.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/8.0/graphhopper-web-8.0.jar
-
-      - name: Prepare config.yml for GH8
+      # =====================
+      #  Config GH8 (custom model)
+      # =====================
+      - name: Prepare config-gh8.yml
         run: |
           cat > config-gh8.yml <<EOL
           graphhopper:
@@ -80,11 +78,22 @@ jobs:
             profiles:
               - name: car
                 vehicle: car
-                weighting: fastest
+                weighting: custom
+                custom_model: |
+                  {
+                    "speed": [{"if": "true", "multiply_by": 1.0}],
+                    "priority": [{"if": "true", "multiply_by": 1.0}]
+                  }
                 turn_costs: true
+
               - name: car_shortest
                 vehicle: car
-                weighting: shortest
+                weighting: custom
+                custom_model: |
+                  {
+                    "priority": [{"if": "true", "multiply_by": 1.0}],
+                    "distance_influence": 100.0
+                  }
                 turn_costs: true
 
             profiles_ch:
@@ -95,13 +104,31 @@ jobs:
             prepare.min_network_size: 200
           EOL
 
+      # =====================
+      #  Run GH7 + GH8 imports
+      # =====================
+      - name: Run GraphHopper 7 import
+        run: |
+          java -Xmx6g -jar graphhopper-web-7.0.jar import config-gh7.yml
+          cp config-gh7.yml turkey-gh7/
+
       - name: Run GraphHopper 8 import
         run: |
           java -Xmx6g -jar graphhopper-web-8.0.jar import config-gh8.yml
           cp config-gh8.yml turkey-gh8/
-          zip -r turkey-gh8.ghz turkey-gh8
 
-      # --- POI extraction ---
+      # =====================
+      #  Create GHZ archives
+      # =====================
+      - name: Zip GH7
+        run: zip -r turkey-gh7.ghz turkey-gh7
+
+      - name: Zip GH8
+        run: zip -r turkey-gh8.ghz turkey-gh8
+
+      # =====================
+      #  POIs + Address DB
+      # =====================
       - name: Extract POIs + addresses with Osmium
         run: |
           osmium tags-filter turkey.osm.pbf \
@@ -112,13 +139,15 @@ jobs:
         run: |
           ogr2ogr -f SQLite pois.sqlite poi.osm.pbf -dsco SPATIALITE=YES
 
-      # --- Release upload ---
+      # =====================
+      #  Release
+      # =====================
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: monthly-build
-          name: "Monthly Turkey Data (GH7 + GH8)"
-          body: "GraphHopper-7 & GraphHopper-8 graphs (.ghz) + POI DB (SQLite) for Turkey"
+          name: "Monthly Turkey Data"
+          body: "GraphHopper 7 + 8 graphs (.ghz) + POI DB (SQLite) for Turkey"
           files: |
             turkey-gh7.ghz
             turkey-gh8.ghz
