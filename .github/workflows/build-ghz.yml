@@ -1,4 +1,4 @@
-name: Build GraphHopper Turkey Data
+name: İptal-Build GraphHopper Turkey Data
 
 on:
   schedule:
