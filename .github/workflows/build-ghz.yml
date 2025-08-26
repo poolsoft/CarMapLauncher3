@@ -25,7 +25,7 @@ jobs:
 
       - name: Download GraphHopper Web JAR
         run: |
-          wget -O graphhopper-web-8.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/9.0/graphhopper-web-8.0.jar
+          wget -O graphhopper-web-8.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/8.0/graphhopper-web-8.0.jar
 
       - name: Prepare config.yml
         run: |
