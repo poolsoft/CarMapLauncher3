@@ -1,4 +1,4 @@
-name: İptal-Build GraphHopper Turkey Data
+name: Build GraphHopper9 Turkey Data
 
 on:
   schedule:
@@ -17,7 +17,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget unzip default-jre default-jdk maven \
-            osmium-tool gdal-bin sqlite3
+            osmium-tool gdal-bin sqlite3 zip
 
       - name: Download OSM Turkey extract
         run: |
@@ -25,7 +25,7 @@ jobs:
 
       - name: Download GraphHopper Web JAR
         run: |
-          wget -O graphhopper-web-7.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/7.0/graphhopper-web-7.0.jar
+          wget -O graphhopper-web-9.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/9.0/graphhopper-web-9.0.jar
 
       - name: Prepare config.yml
         run: |
@@ -57,7 +57,8 @@ jobs:
 
       - name: Run GraphHopper import
         run: |
-          java -Xmx6g -jar graphhopper-web-7.0.jar import config.yml
+          java -Xmx6g -jar graphhopper-web-9.0.jar import config.yml
+          cp config.yml turkey-gh/   # config.yml GHZ içine kopyala
 
       - name: Zip graphhopper data (.ghz)
         run: |
