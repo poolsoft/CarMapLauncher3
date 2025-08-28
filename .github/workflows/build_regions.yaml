@@ -1,0 +1,45 @@
+name: Build Regions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osmium-tool osmosis
+
+      - name: Extract regions
+        run: |
+          mkdir -p regions
+          for region in "marmara,26.0,40.0,31.0,42.0" \
+              "ege,25.0,36.0,30.5,41.0" \
+              "akdeniz,30.0,35.0,37.5,37.5" \
+              "ic_anadolu,32.0,36.0,40.0,41.5" \
+              "karadeniz,28.0,40.0,42.0,44.5" \
+              "dogu_anadolu,39.0,37.0,44.5,42.5" \
+              "guneydogu,36.0,36.0,43.0,40.0" \
+              "turkiye,26.04,35.82,44.79,42.14"
+          do
+            IFS=',' read name minlon minlat maxlon maxlat <<< "$region"
+            osmium extract -b ${minlon},${minlat},${maxlon},${maxlat} \
+              -o regions/${name}.pbf turkey.osm.pbf
+            osmosis --read-pbf file=regions/${name}.pbf \
+              --mapfile-writer file=regions/${name}.map \
+              bbox=${minlat},${minlon},${maxlat},${maxlon}
+          done
+        env:
+          JAVA_TOOL_OPTIONS: -Xmx6g
