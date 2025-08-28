@@ -1,4 +1,4 @@
-name: Build Regions
+name: Build Regions Mapsforge
 
 on:
   workflow_dispatch:
@@ -6,28 +6,29 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Setup Java 21
-        uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y osmium-tool osmosis curl
+          sudo apt-get install -y osmium-tool curl unzip default-jre
 
-      - name: Download Turkey PBF
+      - name: Download Turkey extract
         run: |
-          curl -L --fail --retry 3 -o turkey.osm.pbf \
-            https://download.geofabrik.de/europe/turkey-latest.osm.pbf
-          ls -lh turkey.osm.pbf
+          curl -L -o turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
 
-      - name: Extract Regions
+      - name: Install Osmosis + Mapsforge plugin
+        run: |
+          curl -L -o osmosis-latest.zip https://bretth.dev.openstreetmap.org/osmosis-build/osmosis-latest.zip
+          unzip osmosis-latest.zip -d $HOME/osmosis
+          curl -L -o mapsforge-map-writer.zip https://download.mapsforge.org/osmosis-mapfile-writer-latest.zip
+          unzip mapsforge-map-writer.zip -d $HOME/osmosis/plugins
+          echo "$HOME/osmosis/bin" >> $GITHUB_PATH
+
+      - name: Split regions and generate .map files
         run: |
           mkdir -p regions
           for region in "marmara,26.0,40.0,31.0,42.0" \
@@ -43,8 +44,13 @@ jobs:
             osmium extract -b ${minlon},${minlat},${maxlon},${maxlat} \
               -o regions/${name}.pbf turkey.osm.pbf
             osmosis --read-pbf file=regions/${name}.pbf \
+              --plugin-dir=$HOME/osmosis/plugins \
               --mapfile-writer file=regions/${name}.map \
               bbox=${minlat},${minlon},${maxlat},${maxlon}
           done
-        env:
-          JAVA_TOOL_OPTIONS: -Xmx6g
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapsforge-regions
+          path: regions/*.map
