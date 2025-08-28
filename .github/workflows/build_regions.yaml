@@ -22,10 +22,10 @@ jobs:
 
       - name: Install Osmosis + Mapsforge plugin
         run: |
-          curl -L -o osmosis-latest.zip https://bretth.dev.openstreetmap.org/osmosis-build/osmosis-latest.zip
+          curl -L -o osmosis-latest.zip https://bretth.dev.openstreetmap.org/osmosis-build/osmosis-0.47.zip
           unzip osmosis-latest.zip -d $HOME/osmosis
-          curl -L -o mapsforge-map-writer.zip https://download.mapsforge.org/osmosis-mapfile-writer-latest.zip
-          unzip mapsforge-map-writer.zip -d $HOME/osmosis/plugins
+          curl -L -o mapsforge-map-writer.jar https://repo1.maven.org/maven2/org/mapsforge/mapsforge-map-writer/0.25.0/mapsforge-map-writer-0.25.0.jar
+          cp -d $HOME/osmosis/plugins
           echo "$HOME/osmosis/bin" >> $GITHUB_PATH
 
       - name: Split regions and generate .map files
