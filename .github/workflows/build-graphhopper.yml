@@ -1,8 +1,9 @@
 name: Build GraphHopper + Regional Maps in GHZ
 
 on:
-  schedule: ["0 0 1 * *"]
-  workflow_dispatch:
+  schedule:
+    - cron: "0 0 1 * *"   # her ayın 1'inde çalışır
+  workflow_dispatch:       # manuel başlatma
 
 jobs:
   build:
