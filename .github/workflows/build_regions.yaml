@@ -1,4 +1,4 @@
-name: Build Regions Mapsforge
+name: Build Mapsforge Regions
 
 on:
   workflow_dispatch:
@@ -8,47 +8,50 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y osmium-tool curl unzip default-jre
+          sudo apt-get install -y osmium-tool default-jre curl unzip
 
       - name: Download Turkey extract
         run: |
           curl -L -o turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
 
-      - name: Install Osmosis + Mapsforge plugin
+      - name: Download Mapsforge MapWriter
         run: |
-          curl -L -o osmosis-latest.zip https://bretth.dev.openstreetmap.org/osmosis-build/osmosis-0.47.zip
-          unzip osmosis-latest.zip -d $HOME/osmosis
-          curl -L -o mapsforge-map-writer.jar https://repo1.maven.org/maven2/org/mapsforge/mapsforge-map-writer/0.25.0/mapsforge-map-writer-0.25.0.jar
-          cp mapsforge-map-writer.jar $HOME/osmosis/lib/default/
-          echo "$HOME/osmosis/bin" >> $GITHUB_PATH
+          mkdir -p $HOME/mapsforge
+          curl -L -o $HOME/mapsforge/mapsforge-map-writer.jar https://repo1.maven.org/maven2/org/mapsforge/mapsforge-map-writer/0.25.0/mapsforge-map-writer-0.25.0.jar
 
-      - name: Split regions and generate .map files
+      - name: Generate regional Mapsforge .map files
         run: |
           mkdir -p regions
           for region in "marmara,26.0,40.0,31.0,42.0" \
-              "ege,25.0,36.0,30.5,41.0" \
-              "akdeniz,30.0,35.0,37.5,37.5" \
-              "ic_anadolu,32.0,36.0,40.0,41.5" \
-              "karadeniz,28.0,40.0,42.0,44.5" \
-              "dogu_anadolu,39.0,37.0,44.5,42.5" \
-              "guneydogu,36.0,36.0,43.0,40.0" \
-              "turkiye,26.04,35.82,44.79,42.14"
+                        "ege,25.0,36.0,30.5,41.0" \
+                        "akdeniz,30.0,35.0,37.5,37.5" \
+                        "ic_anadolu,32.0,36.0,40.0,41.5" \
+                        "karadeniz,28.0,40.0,42.0,44.5" \
+                        "dogu_anadolu,39.0,37.0,44.5,42.5" \
+                        "guneydogu,36.0,36.0,43.0,40.0" \
+                        "turkiye,26.04,35.82,44.79,42.14"
           do
             IFS=',' read name minlon minlat maxlon maxlat <<< "$region"
+            
+            # Bölgeyi .pbf olarak çıkar
             osmium extract -b ${minlon},${minlat},${maxlon},${maxlat} \
               -o regions/${name}.pbf turkey.osm.pbf
-            osmosis --read-pbf file=regions/${name}.pbf \
-              --mapfile-writer file=regions/${name}.map \
-              bbox=${minlat},${minlon},${maxlat},${maxlon}
+
+            # Mapsforge .map üret
+            java -Xmx6g -cp $HOME/mapsforge/mapsforge-map-writer.jar \
+              org.mapsforge.map.writer.MapFileWriter \
+              --input regions/${name}.pbf \
+              --output regions/${name}.map \
+              --bbox ${minlat},${minlon},${maxlat},${maxlon}
           done
 
-      - name: Upload artifacts
+      - name: Upload Mapsforge artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mapsforge-regions
