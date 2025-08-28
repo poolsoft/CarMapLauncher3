@@ -44,7 +44,6 @@ jobs:
             osmium extract -b ${minlon},${minlat},${maxlon},${maxlat} \
               -o regions/${name}.pbf turkey.osm.pbf
             osmosis --read-pbf file=regions/${name}.pbf \
-              --plugin-dir=$HOME/osmosis/lib/default \
               --mapfile-writer file=regions/${name}.map \
               bbox=${minlat},${minlon},${maxlat},${maxlon}
           done
