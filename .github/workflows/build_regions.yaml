@@ -18,7 +18,7 @@ jobs:
       - name: Download Turkey PBF
         run: |
           curl -L --fail --retry 3 -o turkey.osm.pbf \
-            https://download.geofabrik.de/asia/turkey-latest.osm.pbf
+            https://download.geofabrik.de/europe/turkey-latest.osm.pbf
           ls -lh turkey.osm.pbf
 
       - name: Extract Regions
