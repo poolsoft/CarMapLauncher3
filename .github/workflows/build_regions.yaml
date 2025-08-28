@@ -20,7 +20,11 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y osmium-tool osmosis
+          sudo apt-get install -y osmium-tool osmosis curl
+
+      - name: Download Turkey OSM PBF
+        run: |
+          curl -L -o turkey.osm.pbf https://download.geofabrik.de/asia/turkey-latest.osm.pbf
 
       - name: Extract regions
         run: |
