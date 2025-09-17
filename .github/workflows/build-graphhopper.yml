@@ -1,4 +1,4 @@
-name: Build GraphHopper and mbtiles Turkey Data
+name: Build GraphHopper + MBTiles Turkey Data
 
 on:
   schedule:
@@ -16,12 +16,27 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip default-jre default-jdk maven \
-            osmium-tool gdal-bin sqlite3 zip cmake g++ build-essential zlib1g-dev libsqlite3-dev
+          sudo apt-get install -y \
+            wget unzip default-jre default-jdk maven \
+            osmium-tool gdal-bin sqlite3 zip \
+            build-essential cmake git lua5.3 liblua5.3-dev pkg-config \
+            libsqlite3-dev zlib1g-dev
+
+      - name: Build Tilemaker
+        run: |
+          git clone https://github.com/systemed/tilemaker.git
+          cd tilemaker
+          make
+          sudo make install
 
       - name: Download OSM Turkey extract
         run: |
           wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
+
+      - name: Generate MBTiles using Tilemaker
+        run: |
+          mkdir -p mbtiles_output
+          tilemaker --input turkey.osm.pbf --output mbtiles_output/turkey.mbtiles --process process-openmaptiles.lua --config config-openmaptiles.json
 
       - name: Download GraphHopper Web JAR
         run: |
@@ -55,7 +70,7 @@ jobs:
       - name: Run GraphHopper import
         run: |
           java -Xmx6g -jar graphhopper-web-7.0.jar import config.yml
-          cp config.yml turkey-gh/   # config.yml GHZ içine kopyala
+          cp config.yml turkey-gh/
 
       - name: Zip graphhopper data (.ghz)
         run: |
@@ -71,30 +86,35 @@ jobs:
         run: |
           ogr2ogr -f SQLite pois.sqlite poi.osm.pbf -dsco SPATIALITE=YES
 
-      # 🔥 Tilemaker ile .mbtiles üretimi
-      - name: Build Tilemaker
+      - name: Create style.json
         run: |
-          git clone https://github.com/systemed/tilemaker.git
-          cd tilemaker
-          make
-          sudo make install
-
-      - name: Generate MBTiles
-        run: |
-          tilemaker --input turkey.osm.pbf \
-                    --output turkey.mbtiles \
-                    --config /usr/local/share/tilemaker/resources/config-openmaptiles.json \
-                    --process /usr/local/share/tilemaker/resources/process-openmaptiles.lua
+          cat > style.json <<EOL
+          {
+            "version": 8,
+            "name": "Offline Car Navigation",
+            "sources": {
+              "turkey": {
+                "type": "vector",
+                "tiles": ["mbtiles://mbtiles_output/turkey.mbtiles"],
+                "maxzoom": 14
+              }
+            },
+            "sprite": "",
+            "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+            "layers": []
+          }
+          EOL
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: monthly-build
           name: "Monthly Turkey Data"
-          body: "GraphHopper graph (.ghz) + POI DB (SQLite) + MBTiles (vector tiles) for Turkey"
+          body: "GraphHopper graph (.ghz) + POI DB (SQLite) + MBTiles + style.json for Turkey"
           files: |
             turkey.ghz
             pois.sqlite
-            turkey.mbtiles
+            mbtiles_output/turkey.mbtiles
+            style.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
