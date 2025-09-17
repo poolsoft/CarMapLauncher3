@@ -24,11 +24,20 @@ jobs:
         run: |
           wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
 
-      - name: Download Turkey MBTiles
+      # - name: Download Tilemaker Release
+      #   run: |
+      #     wget -O tilemaker.zip https://github.com/systemed/tilemaker/releases/download/v3.0.0/tilemaker-ubuntu-22.04.zip
+      #     unzip tilemaker.zip -d tilemaker
+      #     chmod +x tilemaker/build/tilemaker
+
+      - name: Generate MBTiles with Tilemaker
         run: |
           mkdir -p mbtiles_output
-          wget -c "https://data.maptiler.com/download/WyIwZDU2NjgwNS05OWI1LTQ0MmEtOTdkYy0wYjg0M2MxNzMyMWUiLG51bGwsMTY5OTNd.aMsN9g.BABMRiK-2DoTcLh7PYzok5hb4UE/maptiler-osm-2020-02-10-v3.11-europe_turkey.mbtiles" \
-            -O mbtiles_output/turkey.mbtiles
+          ./tilemaker/build/tilemaker \
+            --input turkey.osm.pbf \
+            --output mbtiles_output/turkey.mbtiles \
+            --process tilemaker/resources/process-openmaptiles.lua \
+            --config tilemaker/resources/config-openmaptiles.json
 
       - name: Download GraphHopper Web JAR
         run: |
