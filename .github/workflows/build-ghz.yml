@@ -24,11 +24,11 @@ jobs:
         run: |
           wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
 
-      # - name: Download Tilemaker Release
-      #   run: |
-      #     wget -O tilemaker.zip https://github.com/systemed/tilemaker/releases/download/v3.0.0/tilemaker-ubuntu-22.04.zip
-      #     unzip tilemaker.zip -d tilemaker
-      #     chmod +x tilemaker/build/tilemaker
+      - name: Download Tilemaker Release
+        run: |
+          wget -O tilemaker.zip https://github.com/systemed/tilemaker/releases/download/v3.0.0/tilemaker-ubuntu-22.04.zip
+          unzip tilemaker.zip -d tilemaker
+          chmod +x tilemaker/build/tilemaker
 
       - name: Generate MBTiles with Tilemaker
         run: |
