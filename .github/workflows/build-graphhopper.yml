@@ -18,26 +18,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             wget unzip default-jre default-jdk maven \
-            osmium-tool gdal-bin sqlite3 zip \
-            build-essential cmake git lua5.3 liblua5.3-dev pkg-config \
-            libsqlite3-dev zlib1g-dev \
-            libboost-all-dev
-
-      - name: Build Tilemaker
-        run: |
-          git clone https://github.com/systemed/tilemaker.git
-          cd tilemaker
-          make
-          sudo make install
+            osmium-tool gdal-bin sqlite3 zip
 
       - name: Download OSM Turkey extract
         run: |
           wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
 
-      - name: Generate MBTiles using Tilemaker
+      - name: Download Turkey MBTiles
         run: |
           mkdir -p mbtiles_output
-          tilemaker --input turkey.osm.pbf --output mbtiles_output/turkey.mbtiles --process process-openmaptiles.lua --config config-openmaptiles.json
+          wget -c "https://data.maptiler.com/download/WyIwZDU2NjgwNS05OWI1LTQ0MmEtOTdkYy0wYjg0M2MxNzMyMWUiLG51bGwsMTY5OTNd.aMsN9g.BABMRiK-2DoTcLh7PYzok5hb4UE/maptiler-osm-2020-02-10-v3.11-europe_turkey.mbtiles" \
+            -O mbtiles_output/turkey.mbtiles
 
       - name: Download GraphHopper Web JAR
         run: |
