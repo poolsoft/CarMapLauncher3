@@ -1,4 +1,4 @@
-name: Build GraphHopper 7+8 Turkey Data
+name: Build2 GraphHopper + MBTiles Turkey Data
 
 on:
   schedule:
@@ -16,34 +16,42 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip default-jre default-jdk maven \
+          sudo apt-get install -y \
+            wget unzip default-jre default-jdk maven \
             osmium-tool gdal-bin sqlite3 zip
 
-      # =====================
-      #  Download Data + Tools
-      # =====================
       - name: Download OSM Turkey extract
         run: |
           wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
 
-      - name: Download GraphHopper 7 + 8
+      # - name: Download Tilemaker Release
+      #   run: |
+      #     wget -O tilemaker.zip https://github.com/systemed/tilemaker/releases/download/v3.0.0/tilemaker-ubuntu-22.04.zip
+      #     unzip tilemaker.zip -d tilemaker
+      #     chmod +x tilemaker/build/tilemaker
+
+      - name: Generate MBTiles with Tilemaker
+        run: |
+          mkdir -p mbtiles_output
+          ./tilemaker/build/tilemaker \
+            --input turkey.osm.pbf \
+            --output mbtiles_output/turkey.mbtiles \
+            --process tilemaker/resources/process-openmaptiles.lua \
+            --config tilemaker/resources/config-openmaptiles.json
+
+      - name: Download GraphHopper Web JAR
         run: |
           wget -O graphhopper-web-7.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/7.0/graphhopper-web-7.0.jar
-          wget -O graphhopper-web-8.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/8.0/graphhopper-web-8.0.jar
 
-      # =====================
-      #  Config GH7
-      # =====================
-      - name: Prepare config-gh7.yml
+      - name: Prepare config.yml
         run: |
-          cat > config-gh7.yml <<EOL
+          cat > config.yml <<EOL
           graphhopper:
             datareader.file: turkey.osm.pbf
-            graph.location: turkey-gh7
+            graph.location: turkey-gh
             datareader.dataaccess: MMAP
             import.osm.ignored_highways: footway,cycleway,path,pedestrian,steps,track,bridleway,service
             graph.encoded_values: [average_speed, maxspeed, road_class, priority, surface]
-
             profiles:
               - name: car
                 vehicle: car
@@ -53,82 +61,22 @@ jobs:
                 vehicle: car
                 weighting: shortest
                 turn_costs: true
-
             profiles_ch:
               - profile: car
               - profile: car_shortest
-
             prepare.ch.threads: 1
             prepare.min_network_size: 200
           EOL
 
-      # =====================
-      #  Config GH8 (custom model)
-      # =====================
-      - name: Prepare config-gh8.yml
+      - name: Run GraphHopper import
         run: |
-          cat > config-gh8.yml <<EOL
-          graphhopper:
-            datareader.file: turkey.osm.pbf
-            graph.location: turkey-gh8
-            datareader.dataaccess: MMAP
-            import.osm.ignored_highways: footway,cycleway,path,pedestrian,steps,track,bridleway,service
-            graph.encoded_values: [average_speed, maxspeed, road_class, priority, surface]
+          java -Xmx6g -jar graphhopper-web-7.0.jar import config.yml
+          cp config.yml turkey-gh/
 
-            profiles:
-              - name: car
-                vehicle: car
-                weighting: custom
-                custom_model: |
-                  {
-                    "speed": [{"if": "true", "multiply_by": 1.0}],
-                    "priority": [{"if": "true", "multiply_by": 1.0}]
-                  }
-                turn_costs: true
-
-              - name: car_shortest
-                vehicle: car
-                weighting: custom
-                custom_model: |
-                  {
-                    "priority": [{"if": "true", "multiply_by": 1.0}],
-                    "distance_influence": 100.0
-                  }
-                turn_costs: true
-
-            profiles_ch:
-              - profile: car
-              - profile: car_shortest
-
-            prepare.ch.threads: 1
-            prepare.min_network_size: 200
-          EOL
-
-      # =====================
-      #  Run GH7 + GH8 imports
-      # =====================
-      - name: Run GraphHopper 7 import
+      - name: Zip graphhopper data (.ghz)
         run: |
-          java -Xmx6g -jar graphhopper-web-7.0.jar import config-gh7.yml
-          cp config-gh7.yml turkey-gh7/
+          zip -r turkey.ghz turkey-gh
 
-      - name: Run GraphHopper 8 import
-        run: |
-          java -Xmx6g -jar graphhopper-web-8.0.jar import config-gh8.yml
-          cp config-gh8.yml turkey-gh8/
-
-      # =====================
-      #  Create GHZ archives
-      # =====================
-      - name: Zip GH7
-        run: zip -r turkey-gh7.ghz turkey-gh7
-
-      - name: Zip GH8
-        run: zip -r turkey-gh8.ghz turkey-gh8
-
-      # =====================
-      #  POIs + Address DB
-      # =====================
       - name: Extract POIs + addresses with Osmium
         run: |
           osmium tags-filter turkey.osm.pbf \
@@ -139,18 +87,35 @@ jobs:
         run: |
           ogr2ogr -f SQLite pois.sqlite poi.osm.pbf -dsco SPATIALITE=YES
 
-      # =====================
-      #  Release
-      # =====================
+      - name: Create style.json
+        run: |
+          cat > style.json <<EOL
+          {
+            "version": 8,
+            "name": "Offline Car Navigation",
+            "sources": {
+              "turkey": {
+                "type": "vector",
+                "tiles": ["mbtiles://mbtiles_output/turkey.mbtiles"],
+                "maxzoom": 14
+              }
+            },
+            "sprite": "",
+            "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+            "layers": []
+          }
+          EOL
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: monthly-build
           name: "Monthly Turkey Data"
-          body: "GraphHopper 7 + 8 graphs (.ghz) + POI DB (SQLite) for Turkey"
+          body: "GraphHopper graph (.ghz) + POI DB (SQLite) + MBTiles + style.json for Turkey"
           files: |
-            turkey-gh7.ghz
-            turkey-gh8.ghz
+            turkey.ghz
             pois.sqlite
+            mbtiles_output/turkey.mbtiles
+            style.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
