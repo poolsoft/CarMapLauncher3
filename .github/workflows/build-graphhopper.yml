@@ -20,7 +20,8 @@ jobs:
             wget unzip default-jre default-jdk maven \
             osmium-tool gdal-bin sqlite3 zip \
             build-essential cmake git lua5.3 liblua5.3-dev pkg-config \
-            libsqlite3-dev zlib1g-dev
+            libsqlite3-dev zlib1g-dev \
+            libboost-all-dev
 
       - name: Build Tilemaker
         run: |
