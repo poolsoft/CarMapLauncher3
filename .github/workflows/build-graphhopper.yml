@@ -1,4 +1,4 @@
-name: Build GraphHopper + Regional Maps in GHZ
+name: Build GraphHopper and mbtiles Turkey Data
 
 on:
   schedule:
@@ -8,27 +8,28 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      JAVA_TOOL_OPTIONS: "-Xmx6g"
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y wget unzip default-jre default-jdk maven \
-            osmium-tool gdal-bin sqlite3 zip osmosis
+            osmium-tool gdal-bin sqlite3 zip cmake g++ build-essential zlib1g-dev libsqlite3-dev
 
-      - name: Download Turkey OSM & GraphHopper JAR
+      - name: Download OSM Turkey extract
         run: |
           wget -O turkey.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
-          wget -O graphhopper-web-7.0.jar \
-            https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/7.0/graphhopper-web-7.0.jar
 
-      - name: Build GraphHopper .ghz
+      - name: Download GraphHopper Web JAR
         run: |
-          cat > config.yml <<'EOL'
+          wget -O graphhopper-web-7.0.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/7.0/graphhopper-web-7.0.jar
+
+      - name: Prepare config.yml
+        run: |
+          cat > config.yml <<EOL
           graphhopper:
             datareader.file: turkey.osm.pbf
             graph.location: turkey-gh
@@ -50,55 +51,50 @@ jobs:
             prepare.ch.threads: 1
             prepare.min_network_size: 200
           EOL
-          java -jar graphhopper-web-7.0.jar import config.yml
-          zip -r turkey.ghz turkey-gh/
-          cp config.yml turkey-gh/
 
-      - name: Set up Osmosis mapsforge plugin
+      - name: Run GraphHopper import
         run: |
-          mkdir -p ~/.openstreetmap/osmosis/plugins
-          wget -O ~/.openstreetmap/osmosis/plugins/mapsforge-map-writer.jar \
-            https://repo1.maven.org/maven2/org/mapsforge/mapsforge-map-writer/0.25.0/mapsforge-map-writer-0.25.0.jar
+          java -Xmx6g -jar graphhopper-web-7.0.jar import config.yml
+          cp config.yml turkey-gh/   # config.yml GHZ içine kopyala
 
-      - name: Generate Regional .map files
+      - name: Zip graphhopper data (.ghz)
         run: |
-          mkdir regions
-          for region in "marmara,26.0,40.0,31.0,42.0" \
-              "ege,25.0,36.0,30.5,41.0" \
-              "akdeniz,30.0,35.0,37.5,37.5" \
-              "ic_anadolu,32.0,36.0,40.0,41.5" \
-              "karadeniz,28.0,40.0,42.0,44.5" \
-              "dogu_anadolu,39.0,37.0,44.5,42.5" \
-              "guneydogu,36.0,36.0,43.0,40.0" \
-              "turkiye,26.04,35.82,44.79,42.14"
-          do
-            IFS=',' read name minlon minlat maxlon maxlat <<< "$region"
-            osmium extract -b ${minlon},${minlat},${maxlon},${maxlat} \
-              -o regions/${name}.pbf turkey.osm.pbf
-            osmosis --read-pbf file=regions/${name}.pbf \
-              --mapfile-writer file=regions/${name}.map \
-              bbox=${minlat},${minlon},${maxlat},${maxlon}
-          done
+          zip -r turkey.ghz turkey-gh
 
-      - name: Add regional .map into turkey.ghz
-        run: |
-          zip -ur turkey.ghz regions/*.map
-
-      - name: Build POI SQLite
+      - name: Extract POIs + addresses with Osmium
         run: |
           osmium tags-filter turkey.osm.pbf \
             nwr/amenity nwr/shop nwr/tourism nwr/leisure nwr/highway nwr/addr:* \
             -o poi.osm.pbf
+
+      - name: Convert POIs to SQLite
+        run: |
           ogr2ogr -f SQLite pois.sqlite poi.osm.pbf -dsco SPATIALITE=YES
 
-      - name: Publish Release
-        uses: softprops/action-gh-release@v2
+      # 🔥 Tilemaker ile .mbtiles üretimi
+      - name: Build Tilemaker
+        run: |
+          git clone https://github.com/systemed/tilemaker.git
+          cd tilemaker
+          make
+          sudo make install
+
+      - name: Generate MBTiles
+        run: |
+          tilemaker --input turkey.osm.pbf \
+                    --output turkey.mbtiles \
+                    --config /usr/local/share/tilemaker/resources/config-openmaptiles.json \
+                    --process /usr/local/share/tilemaker/resources/process-openmaptiles.lua
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: monthly-build
-          name: "Turkey Data — GHZ including regional maps"
-          body: "GraphHopper GHZ now includes routing + regional Mapsforge .map files + POI SQLite"
+          name: "Monthly Turkey Data"
+          body: "GraphHopper graph (.ghz) + POI DB (SQLite) + MBTiles (vector tiles) for Turkey"
           files: |
             turkey.ghz
             pois.sqlite
+            turkey.mbtiles
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
