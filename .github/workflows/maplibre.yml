@@ -155,12 +155,12 @@ jobs:
             "sources": {
               "turkey": {
                 "type": "vector",
-                "tiles": ["mbtiles://mbtiles_output/turkey.mbtiles"],
+                "tiles": ["http://localhost:8080/tiles/{z}/{x}/{y}.pbf"],
                 "maxzoom": 14
               }
             },
             "sprite": "",
-            "glyphs": "mbtiles://turkey-fonts.ghz/{fontstack}/{range}.pbf",
+            "glyphs": "http://localhost:8080/fonts/{fontstack}/{range}.pbf",
             "layers": [
               {
                 "id": "background",
