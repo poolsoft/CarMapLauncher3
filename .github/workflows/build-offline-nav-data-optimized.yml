@@ -1,0 +1,191 @@
+name: Build Offline Nav Data for Android 8
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"   # Her ayın 1'inde çalışır
+  workflow_dispatch:       # Manuel başlatma
+
+permissions:
+  contents: write  # Release için
+
+concurrency:
+  group: monthly-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      REGION: turkey
+      TILEMAKER_VERSION: "3.0.0"
+      GRAPHHOPPER_VERSION: "7.0"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set build date (YYYYMM)
+        run: echo "BUILD_DATE=$(date +'%Y%m')" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip default-jre default-jdk maven osmium-tool gdal-bin sqlite3 zip tippecanoe
+
+      - name: Cache Tilemaker
+        uses: actions/cache@v3
+        with:
+          path: tilemaker
+          key: tilemaker-${{ env.TILEMAKER_VERSION }}
+
+      - name: Download Tilemaker
+        if: steps.cache-tilemaker.outputs.cache-hit != 'true'
+        run: |
+          wget -O tilemaker.zip https://github.com/systemed/tilemaker/releases/download/v${TILEMAKER_VERSION}/tilemaker-ubuntu-22.04.zip
+          unzip tilemaker.zip -d tilemaker
+          chmod +x tilemaker/build/tilemaker
+
+      - name: Cache GraphHopper JAR
+        uses: actions/cache@v3
+        with:
+          path: graphhopper-web-${{ env.GRAPHHOPPER_VERSION }}.jar
+          key: gh-jar-${{ env.GRAPHHOPPER_VERSION }}
+
+      - name: Download GraphHopper
+        if: steps.cache-gh.outputs.cache-hit != 'true'
+        run: |
+          wget -O graphhopper-web-${GRAPHHOPPER_VERSION}.jar https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/${GRAPHHOPPER_VERSION}/graphhopper-web-${GRAPHHOPPER_VERSION}.jar
+
+      - name: Cache OSM extract
+        uses: actions/cache@v3
+        with:
+          path: data/${{ env.REGION }}.osm.pbf
+          key: osm-${{ env.REGION }}-${{ env.BUILD_DATE }}
+
+      - name: Download OSM extract
+        if: steps.cache-osm.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p data
+          wget -O data/${REGION}.osm.pbf https://download.geofabrik.de/europe/${REGION}-latest.osm.pbf
+
+      - name: Generate MBTiles with Tilemaker
+        run: |
+          mkdir -p mbtiles_output
+          ./tilemaker/build/tilemaker \
+            --input data/${REGION}.osm.pbf \
+            --output mbtiles_output/${REGION}.mbtiles \
+            --process tilemaker/resources/process-openmaptiles.lua \
+            --config tilemaker/resources/config-openmaptiles.json
+
+      - name: Prepare GraphHopper config for Android
+        run: |
+          cat > config.yml <<EOL
+          graphhopper:
+            datareader.file: data/${REGION}.osm.pbf
+            graph.location: ${REGION}-gh
+            datareader.dataaccess: MMAP
+            import.osm.ignored_highways: footway,cycleway,path,pedestrian,steps,track,bridleway,service
+            graph.encoded_values: [average_speed, maxspeed, road_class, priority, surface]
+            profiles:
+              - name: car
+                vehicle: car
+                weighting: fastest
+                turn_costs: false
+              - name: car_shortest
+                vehicle: car
+                weighting: shortest
+                turn_costs: false
+            prepare.ch.threads: 1
+            prepare.min_network_size: 200
+          EOL
+
+      - name: Import GraphHopper data
+        run: |
+          java -Xmx6g -jar graphhopper-web-${GRAPHHOPPER_VERSION}.jar import config.yml
+          cp config.yml ${REGION}-gh/
+
+      - name: Zip GraphHopper data
+        run: |
+          zip -r ${REGION}-gh.ghz ${REGION}-gh/
+
+      - name: Download font glyphs (.ghz/.zip)
+        run: |
+          wget -O fonts.zip https://github.com/openmaptiles/fonts/releases/latest/download/fonts.zip
+          unzip -o fonts.zip
+          zip -r ${REGION}-fonts.ghz fonts/
+
+      - name: Extract POIs (filtered)
+        run: |
+          osmium tags-filter data/${REGION}.osm.pbf \
+            nwr/amenity=fuel,restaurant,hospital,bank,atm,pharmacy,police \
+            nwr/shop=supermarket,mall,car_repair,car \
+            nwr/tourism=hotel,motel,attraction \
+            nwr/highway=motorway_junction,services \
+            -o poi_filtered.osm.pbf
+
+      - name: Convert POIs to SQLite (lightweight)
+        run: |
+          ogr2ogr -f SQLite pois.sqlite poi_filtered.osm.pbf \
+            -dsco SPATIALITE=NO -lco SPATIAL_INDEX=NO \
+            -select "name,amenity,shop,tourism,addr:city" \
+            -where "name IS NOT NULL"
+
+      - name: Create style.json (optimized)
+        run: |
+          cat > style.json <<EOL
+          {
+            "version": 8,
+            "name": "Turkey Offline Nav",
+            "sources": {
+              "turkey": {
+                "type": "vector",
+                "tiles": ["http://127.0.0.1:8080/tiles/{z}/{x}/{y}.pbf"],
+                "maxzoom": 14,
+                "minzoom": 1
+              },
+              "poi": {
+                "data": "http://127.0.0.1:8080/poi/search?bbox={bbox}"
+              }
+            },
+            "layers": [
+              { "id": "background", "type": "background", "paint": { "background-color": "#f8f4f0" }},
+              { "id": "water", "type": "fill", "source": "turkey", "source-layer": "water", "paint": { "fill-color": "#a0c8f0" }},
+              { "id": "roads", "type": "line", "source": "turkey", "source-layer": "transportation", "paint": { "line-color": "#ffffff", "line-width": 2 }},
+              { "id": "road-labels", "type": "symbol", "source": "turkey", "source-layer": "transportation", "layout": { "text-field": "{name}", "text-size": 12, "text-font": ["Open Sans Regular"] }, "paint": { "text-color": "#000000", "text-halo-color": "#ffffff", "text-halo-width": 1 }}
+            ]
+          }
+          EOL
+
+      - name: Verify files exist and sizes
+        run: |
+          ls -l mbtiles_output/${REGION}.mbtiles
+          ls -l pois.sqlite
+          ls -l style.json
+          ls -l ${REGION}-gh.ghz
+          ls -l ${REGION}-fonts.ghz
+
+      - name: Generate checksum
+        run: |
+          sha256sum mbtiles_output/${REGION}.mbtiles > checksums.txt
+          sha256sum ${REGION}-gh.ghz >> checksums.txt
+          sha256sum ${REGION}-fonts.ghz >> checksums.txt
+          sha256sum pois.sqlite >> checksums.txt
+          sha256sum style.json >> checksums.txt
+
+      - name: Bundle all files into zip
+        run: |
+          BUNDLE=${REGION}-data-${BUILD_DATE}.zip
+          zip -9 -r "$BUNDLE" mbtiles_output/${REGION}.mbtiles \
+            ${REGION}-gh.ghz ${REGION}-fonts.ghz pois.sqlite style.json config.yml checksums.txt
+          echo "BUNDLE: $BUNDLE" >> $GITHUB_ENV
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: monthly-build-${{ env.BUILD_DATE }}
+          name: "Turkey Offline Data - ${{ env.BUILD_DATE }}"
+          body_path: RELEASE_NOTES.md
+          files: |
+            "$BUNDLE"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
