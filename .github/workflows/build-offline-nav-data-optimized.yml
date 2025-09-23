@@ -111,8 +111,8 @@ jobs:
       - name: Download font glyphs (.ghz/.zip)
         run: |
           wget -O fonts.zip https://github.com/openmaptiles/fonts/releases/download/v2.0/v2.0.zip
-          unzip -o fonts.zip
-          zip -r ${REGION}-fonts.ghz fonts/
+          unzip -o v2.0.zip
+          zip -r ${REGION}-fonts.ghz v2.0/
 
       - name: Extract POIs (filtered)
         run: |
