@@ -108,12 +108,6 @@ jobs:
         run: |
           zip -r ${REGION}-gh.ghz ${REGION}-gh/
 
-      - name: Download font glyphs (.ghz/.zip)
-        run: |
-          wget -O fonts.zip https://github.com/openmaptiles/fonts/releases/download/v2.0/v2.0.zip
-          unzip -o v2.0.zip
-          zip -r ${REGION}-fonts.ghz v2.0/
-
       - name: Extract POIs (filtered)
         run: |
           osmium tags-filter data/${REGION}.osm.pbf \
@@ -162,13 +156,11 @@ jobs:
           ls -l pois.sqlite
           ls -l style.json
           ls -l ${REGION}-gh.ghz
-          ls -l ${REGION}-fonts.ghz
 
       - name: Generate checksum
         run: |
           sha256sum mbtiles_output/${REGION}.mbtiles > checksums.txt
           sha256sum ${REGION}-gh.ghz >> checksums.txt
-          sha256sum ${REGION}-fonts.ghz >> checksums.txt
           sha256sum pois.sqlite >> checksums.txt
           sha256sum style.json >> checksums.txt
 
@@ -176,7 +168,7 @@ jobs:
         run: |
           BUNDLE=${REGION}-data-${BUILD_DATE}.zip
           zip -9 -r "$BUNDLE" mbtiles_output/${REGION}.mbtiles \
-            ${REGION}-gh.ghz ${REGION}-fonts.ghz pois.sqlite style.json config.yml checksums.txt
+            ${REGION}-gh.ghz pois.sqlite style.json config.yml checksums.txt
           echo "BUNDLE: $BUNDLE" >> $GITHUB_ENV
 
       - name: Create Release
